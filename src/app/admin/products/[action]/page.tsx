@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/app/context/AuthContext';
+import Image from 'next/image';
 
 interface ProductFormData {
   name: string;
@@ -72,65 +73,28 @@ export default function ProductForm() {
   };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    if (!user) {
-      setError('You must be logged in to upload images');
-      return;
-    }
-
+    if (!e.target.files || e.target.files.length === 0) return;
     setLoading(true);
-    setError('');
-
     try {
-      const uploadedUrls: string[] = [];
+      const file = e.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
       
-      for (const file of files) {
-        // Validate file size (2MB limit)
-        if (file.size > 2 * 1024 * 1024) {
-          throw new Error('Each file must be less than 2MB');
-        }
-
-        // Validate file type
-        if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
-          throw new Error('Only JPEG, PNG and GIF files are allowed');
-        }
-
-        // Generate unique filename
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-
-        // Upload to Supabase Storage
-        const { error: uploadError, data } = await supabase.storage
-          .from('products')
-          .upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          throw new Error(`Failed to upload image: ${uploadError.message}`);
-        }
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('products')
-          .getPublicUrl(fileName);
-
-        uploadedUrls.push(publicUrl);
-      }
-
-      // Update form data with new image URLs
+      await supabase.storage
+        .from('products')
+        .upload(filePath, file);
+        
+      const { data } = supabase.storage
+        .from('products')
+        .getPublicUrl(filePath);
+        
       setFormData(prev => ({
         ...prev,
-        images: [...prev.images, ...uploadedUrls]
+        images: [...prev.images, data.publicUrl]
       }));
-
     } catch (error) {
       console.error('Error uploading image:', error);
-      setError(error instanceof Error ? error.message : 'Failed to upload image');
     } finally {
       setLoading(false);
     }
@@ -228,10 +192,12 @@ export default function ProductForm() {
                 <div className="flex flex-wrap gap-4">
                   {formData.images.map((image, index) => (
                     <div key={index} className="relative group">
-                      <img
-                        src={image}
-                        alt={`Product ${index + 1}`}
-                        className="w-24 h-24 object-cover rounded-lg"
+                      <Image 
+                        src={image} 
+                        alt="Product preview" 
+                        width={200}
+                        height={200}
+                        className="rounded-lg object-cover"
                       />
                       <button
                         type="button"
