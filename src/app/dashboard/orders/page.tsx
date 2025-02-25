@@ -3,9 +3,34 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase/client';
-import { Order } from '../../types/order';
+import { Order, OrderItem } from '../../types/order';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+
+// Type for the raw database response
+interface DbOrder {
+  id: string;
+  user_id: string;
+  status: Order['status'];
+  payment_status: Order['payment_status'];
+  payment_method: Order['payment_method'];
+  shipping_method: Order['shipping_method'];
+  shipping_address: Order['shipping_address'];
+  tracking_number: string | null;
+  tracking_url: string | null;
+  subtotal: number;
+  shipping_fee: number;
+  total: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  items: OrderItem[];
+  user_info: {
+    full_name: string | null;
+    email: string | null;
+    avatar_url: string | null;
+  } | null;
+}
 
 export default function OrdersPage() {
   const { user } = useAuth();
@@ -21,36 +46,13 @@ export default function OrdersPage() {
       }
 
       try {
-        // First, check if the orders table exists
-        const { error: tableError } = await supabase
-          .from('orders')
-          .select('id')
-          .limit(1);
-
-        if (tableError) {
-          console.error('Error checking orders table:', tableError);
-          setError('Unable to access orders. Please try again later.');
-          return;
-        }
-
+        // Use the get_orders_with_items RPC function
         const { data, error: fetchError } = await supabase
-          .from('orders')
-          .select(`
-            *,
-            items:order_items!inner(
-              id,
-              quantity,
-              size,
-              price,
-              product:products!inner(
-                id,
-                name,
-                images
-              )
-            )
-          `)
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .rpc('get_orders_with_items', {
+            items_per_page: 50,  // Fetch more orders at once
+            page_number: 1,      // Start with first page
+            status_filter: null  // No status filter
+          });
 
         if (fetchError) {
           console.error('Error fetching orders:', fetchError);
@@ -58,7 +60,17 @@ export default function OrdersPage() {
           return;
         }
 
-        setOrders(data || []);
+        // Transform the data to match the expected format
+        const transformedOrders = (data as DbOrder[])?.map(order => ({
+          ...order,
+          items: order.items || [],
+          user_info: order.user_info || undefined,
+          tracking_number: order.tracking_number || undefined,
+          tracking_url: order.tracking_url || undefined,
+          notes: order.notes || undefined
+        })) || [];
+
+        setOrders(transformedOrders as Order[]);
       } catch (err) {
         console.error('Error in fetchOrders:', err);
         setError('An unexpected error occurred. Please try again later.');

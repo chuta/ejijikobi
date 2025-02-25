@@ -1,9 +1,17 @@
-import { Resend } from 'resend';
 import { Order } from '../types/order';
+import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend with a fallback for missing API key
+const resend = process.env.RESEND_API_KEY 
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 export async function sendOrderConfirmationEmail(order: Order) {
+  if (!resend) {
+    console.warn('Resend API key not configured. Email notifications are disabled.');
+    return;
+  }
+
   try {
     await resend.emails.send({
       from: 'Ejiji Kobi <orders@ejijikobi.com>',
@@ -20,7 +28,7 @@ export async function sendOrderConfirmationEmail(order: Order) {
         <h3>Items</h3>
         ${order.items.map(item => `
           <div>
-            <p>${item.name} x ${item.quantity}</p>
+            <p>${item.product.name} x ${item.quantity}</p>
             <p>Size: ${item.size}</p>
             <p>Price: ₦${item.price.toLocaleString()}</p>
           </div>
@@ -45,6 +53,11 @@ export async function sendOrderConfirmationEmail(order: Order) {
 }
 
 export async function sendOrderStatusUpdateEmail(order: Order) {
+  if (!resend) {
+    console.warn('Resend API key not configured. Email notifications are disabled.');
+    return;
+  }
+
   try {
     await resend.emails.send({
       from: 'Ejiji Kobi <orders@ejijikobi.com>',

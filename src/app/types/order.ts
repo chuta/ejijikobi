@@ -43,6 +43,7 @@ export interface Order {
   shipping_method: ShippingMethod;
   shipping_address: {
     full_name: string;
+    email: string;
     address: string;
     city: string;
     state: string;
@@ -59,6 +60,11 @@ export interface Order {
   notes?: string;
   created_at: string;
   updated_at: string;
+  user_info?: {
+    full_name: string | null;
+    email: string | null;
+    avatar_url: string | null;
+  };
 }
 
 export interface ShippingRate {

@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useAuth } from '../context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { useAdmin } from '../hooks/useAdmin';
 
 export default function Navigation() {
   const { user, logout } = useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const { isAdmin } = useAdmin();
 
   const isActive = (path: string) => pathname === path;
 
@@ -81,13 +83,21 @@ export default function Navigation() {
                     </button>
                     {isDropdownOpen && (
                       <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-50 border border-gray-100">
+                        {isAdmin && (
+                          <Link
+                            href="/admin"
+                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            Admin Dashboard
+                          </Link>
+                        )}
                         <Link
                           href="/dashboard"
-                          className={`block px-4 py-2 text-sm hover:bg-gray-50 ${
+                          className={`block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
                             isActive('/dashboard') ? 'text-[rgb(200,162,84)]' : ''
                           }`}
                         >
-                          Overview
+                          My Account
                         </Link>
                         <Link
                           href="/admin/products"

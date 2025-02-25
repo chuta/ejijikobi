@@ -98,13 +98,13 @@ export default function ProductModal({ product, isOpen, onClose }: ProductModalP
               <div className="grid md:grid-cols-2 gap-8">
                 <div className="relative h-80 md:h-96 rounded-lg overflow-hidden">
                   <Image
-                    src={product.image}
+                    src={product.images[0] || '/placeholder.jpg'}
                     alt={product.name}
                     fill
                     className="object-cover"
                     priority
                   />
-                  {product.isNew && (
+                  {product.is_new && (
                     <div className="absolute top-2 right-2 bg-black text-white px-3 py-1 rounded-full text-sm">
                       New
                     </div>

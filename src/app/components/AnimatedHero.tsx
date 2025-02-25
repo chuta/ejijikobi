@@ -99,7 +99,7 @@ export default function AnimatedHero() {
               className="absolute inset-0 bg-[rgb(200,162,84)]/10 rounded-lg"
             />
             <Image
-              src="/ejiji1.png"
+              src="/ejijikobi.jpeg"
               alt="Ejiji Kobi Fashion"
               fill
               className="object-cover rounded-lg"

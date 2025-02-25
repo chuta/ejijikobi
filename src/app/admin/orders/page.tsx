@@ -1,230 +1,221 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  createColumnHelper,
-  flexRender,
-} from '@tanstack/react-table';
-import { Order, OrderStatus } from '@/app/types/order';
-import { getAllOrders, updateOrder } from '@/app/lib/supabase';
-import { sendOrderStatusUpdateEmail } from '@/app/lib/email';
-
-const columnHelper = createColumnHelper<Order>();
-
-const columns = [
-  columnHelper.accessor('id', {
-    header: 'Order ID',
-    cell: info => info.getValue(),
-  }),
-  columnHelper.accessor('created_at', {
-    header: 'Date',
-    cell: info => new Date(info.getValue()).toLocaleDateString(),
-  }),
-  columnHelper.accessor('shipping_address.full_name', {
-    header: 'Customer',
-    cell: info => info.getValue(),
-  }),
-  columnHelper.accessor('status', {
-    header: 'Status',
-    cell: info => (
-      <select
-        value={info.getValue()}
-        onChange={e => handleStatusChange(info.row.original.id, e.target.value as OrderStatus)}
-        className="p-2 border rounded-lg"
-      >
-        <option value="pending">Pending</option>
-        <option value="processing">Processing</option>
-        <option value="shipped">Shipped</option>
-        <option value="delivered">Delivered</option>
-        <option value="cancelled">Cancelled</option>
-      </select>
-    ),
-  }),
-  columnHelper.accessor('payment_status', {
-    header: 'Payment',
-    cell: info => info.getValue(),
-  }),
-  columnHelper.accessor('total', {
-    header: 'Total',
-    cell: info => `₦${info.getValue().toLocaleString()}`,
-  }),
-  columnHelper.accessor('tracking_number', {
-    header: 'Tracking',
-    cell: info => (
-      <input
-        type="text"
-        value={info.getValue() || ''}
-        onChange={e => handleTrackingUpdate(info.row.original.id, e.target.value)}
-        placeholder="Enter tracking number"
-        className="p-2 border rounded-lg w-full"
-      />
-    ),
-  }),
-];
-
-async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
-  try {
-    const updatedOrder = await updateOrder(orderId, { status: newStatus });
-    await sendOrderStatusUpdateEmail(updatedOrder);
-  } catch (error) {
-    console.error('Failed to update order status:', error);
-  }
-}
-
-async function handleTrackingUpdate(orderId: string, trackingNumber: string) {
-  try {
-    const trackingUrl = `https://shipping-provider.com/track/${trackingNumber}`;
-    const updatedOrder = await updateOrder(orderId, {
-      tracking_number: trackingNumber,
-      tracking_url: trackingUrl,
-    });
-    if (updatedOrder.status === 'shipped') {
-      await sendOrderStatusUpdateEmail(updatedOrder);
-    }
-  } catch (error) {
-    console.error('Failed to update tracking number:', error);
-  }
-}
+import { supabase } from '@/lib/supabase/client';
+import { Order } from '@/app/types/order';
+import { motion } from 'framer-motion';
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [paymentFilter, setPaymentFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   useEffect(() => {
     loadOrders();
-  }, [page, statusFilter, paymentFilter]);
+  }, [currentPage, statusFilter]);
 
   async function loadOrders() {
     try {
-      const { data, count } = await getAllOrders(page, 10, {
-        status: statusFilter || undefined,
-        payment_status: paymentFilter || undefined,
+      setLoading(true);
+      setError(null);
+
+      console.log('Fetching orders with params:', {
+        page_number: currentPage,
+        items_per_page: 10,
+        status_filter: statusFilter
       });
-      setOrders(data || []);
-      setTotalPages(Math.ceil((count || 0) / 10));
+
+      const { data, error: fetchError } = await supabase
+        .rpc('get_orders_with_items', {
+          items_per_page: 10,
+          page_number: currentPage,
+          status_filter: statusFilter
+        });
+
+      if (fetchError) {
+        console.error('Supabase error:', fetchError);
+        throw new Error(fetchError.message || 'Failed to fetch orders');
+      }
+
+      console.log('Orders data:', data);
+
+      if (data && data.length > 0) {
+        setOrders(data);
+        setTotalPages(Math.ceil(data[0].total_count / 10));
+      } else {
+        setOrders([]);
+        setTotalPages(1);
+      }
     } catch (error) {
-      console.error('Failed to load orders:', error);
+      console.error('Error loading orders:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load orders');
     } finally {
       setLoading(false);
     }
   }
 
-  const table = useReactTable({
-    data: orders,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-  });
+  async function handleStatusChange(orderId: string, newStatus: string) {
+    try {
+      setError(null);
+      
+      const { error: updateError } = await supabase
+        .rpc('update_order_status', {
+          order_id: orderId,
+          new_status: newStatus
+        });
+
+      if (updateError) {
+        console.error('Error updating order status:', updateError);
+        throw new Error(updateError.message || 'Failed to update order status');
+      }
+
+      // Refresh orders list
+      await loadOrders();
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update order status');
+    }
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen pt-24 flex items-center justify-center">
+      <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(200,162,84)]"></div>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-center text-red-500 p-4">
+        <p>Error: {error}</p>
+        <button
+          onClick={() => loadOrders()}
+          className="mt-4 px-4 py-2 bg-black text-white rounded-full hover:bg-[rgb(200,162,84)] transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen pt-24 pb-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-4xl font-playfair font-bold mb-8">Order Management</h1>
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-playfair font-bold">Orders Management</h1>
+        <select
+          value={statusFilter || ''}
+          onChange={(e) => setStatusFilter(e.target.value || null)}
+          className="px-4 py-2 border rounded-full focus:outline-none focus:ring-2 focus:ring-[rgb(200,162,84)]"
+        >
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+          <option value="shipped">Shipped</option>
+          <option value="delivered">Delivered</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
 
-        {/* Filters */}
-        <div className="mb-6 flex gap-4">
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="p-2 border rounded-lg"
-          >
-            <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="shipped">Shipped</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead>
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Order ID
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Customer
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Total
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Date
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {orders.map((order) => (
+              <motion.tr
+                key={order.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  {order.id.slice(0, 8)}...
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {order.user_info?.full_name || 'N/A'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                    order.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                    order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
+                    order.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                    order.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {order.status}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {new Intl.NumberFormat('en-NG', {
+                    style: 'currency',
+                    currency: 'NGN'
+                  }).format(order.total / 100)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {new Date(order.created_at).toLocaleDateString()}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <select
+                    value={order.status}
+                    onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                    className="px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-[rgb(200,162,84)]"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </td>
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-          <select
-            value={paymentFilter}
-            onChange={e => setPaymentFilter(e.target.value)}
-            className="p-2 border rounded-lg"
-          >
-            <option value="">All Payments</option>
-            <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
-            <option value="failed">Failed</option>
-            <option value="refunded">Refunded</option>
-          </select>
-        </div>
-
-        {/* Table */}
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              {table.getHeaderGroups().map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => (
-                    <th
-                      key={header.id}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {table.getRowModel().rows.map(row => (
-                <tr key={row.id}>
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-6 py-4 whitespace-nowrap">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-4 py-2 border rounded-lg disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="px-4 py-2 border rounded-lg disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
-          <div>
-            Page {page} of {totalPages}
-          </div>
-        </div>
+      {/* Pagination */}
+      <div className="mt-6 flex justify-center space-x-2">
+        <button
+          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+          disabled={currentPage === 1}
+          className="px-4 py-2 border rounded-full disabled:opacity-50 hover:bg-gray-50"
+        >
+          Previous
+        </button>
+        <span className="px-4 py-2">
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+          disabled={currentPage === totalPages}
+          className="px-4 py-2 border rounded-full disabled:opacity-50 hover:bg-gray-50"
+        >
+          Next
+        </button>
       </div>
     </div>
   );

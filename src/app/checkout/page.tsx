@@ -83,85 +83,43 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Verify product exists and is valid
-      const { data: product, error: productError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', orderDetails.productId)
-        .single();
-
-      if (productError) {
-        console.error('Product verification failed:', {
-          error: productError.message,
-          details: productError.details,
-          hint: productError.hint,
-          code: productError.code
-        });
-        setError(`Invalid product selected (${productError.message}). Please try again.`);
-        return;
-      }
-
-      if (!product) {
-        console.error('Product not found:', orderDetails.productId);
-        setError('Product not found. Please try again.');
-        return;
-      }
-
-      // Verify size is valid
-      if (!product.sizes.includes(orderDetails.size)) {
-        setError('Invalid size selected. Please try again.');
-        return;
-      }
-
-      // Create the order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user.id,
-          status: 'pending',
-          payment_status: 'pending',
-          payment_method: 'stripe',
-          shipping_method: 'standard',
-          shipping_address: {
-            // Add shipping address details here
+      // Create the order using the database function
+      const { data: orderId, error: orderError } = await supabase
+        .rpc('create_order', {
+          p_user_id: user.id,
+          p_product_id: orderDetails.productId,
+          p_quantity: orderDetails.quantity,
+          p_size: orderDetails.size,
+          p_shipping_address: {
             full_name: user.name,
             email: user.email,
-            phone: user.phone,
+            phone: user.phone || '',
             address: 'To be added',
             city: 'To be added',
             state: 'To be added',
             postal_code: 'To be added',
             country: 'Nigeria'
-          },
-          subtotal: orderDetails.amount,
-          shipping_fee: 0,
-          total: orderDetails.amount
-        })
-        .select()
-        .single();
-
-      if (orderError || !order) {
-        console.error('Order creation failed:', orderError);
-        setError('Failed to create order. Please try again.');
-        return;
-      }
-
-      // Create order item
-      const { error: itemError } = await supabase
-        .from('order_items')
-        .insert({
-          order_id: order.id,
-          product_id: orderDetails.productId,
-          quantity: orderDetails.quantity,
-          size: orderDetails.size,
-          price: orderDetails.amount
+          }
         });
 
-      if (itemError) {
-        // If order item creation fails, delete the order and show error
-        await supabase.from('orders').delete().eq('id', order.id);
-        console.error('Order item creation failed:', itemError);
-        setError('Failed to process order items. Please try again.');
+      if (orderError) {
+        console.error('Order creation failed:', {
+          error: orderError.message,
+          details: orderError.details,
+          hint: orderError.hint,
+          code: orderError.code
+        });
+        
+        // Provide user-friendly error message based on the error
+        if (orderError.message.includes('Insufficient stock')) {
+          setError('This item is out of stock or has insufficient quantity. Please try again later.');
+        } else if (orderError.message.includes('Invalid size')) {
+          setError('The selected size is no longer available. Please choose a different size.');
+        } else if (orderError.message.includes('Product not found')) {
+          setError('This product is no longer available. Please choose a different item.');
+        } else {
+          setError('Failed to create order. Please try again.');
+        }
         return;
       }
 
