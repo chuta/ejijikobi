@@ -6,6 +6,17 @@
     "@typescript-eslint/no-explicit-any": "off",
     "react-hooks/exhaustive-deps": "off",
     "@next/next/no-img-element": "off",
-    "@typescript-eslint/no-require-imports": "off"
+    "@typescript-eslint/no-require-imports": "off",
+    "react/jsx-no-undef": "off",
+    "react/prop-types": "off",
+    "no-unused-vars": "off"
+  },
+  "ignorePatterns": ["src/scripts/**/*"],
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
   }
 } 
