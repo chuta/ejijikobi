@@ -1,61 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import StripeProvider from '../components/StripeProvider';
 import CheckoutForm from '../components/CheckoutForm';
-import { supabase } from '../lib/supabase/client';
-import { motion } from 'framer-motion';
-import Link from 'next/link';
+import StripeProvider from '../components/StripeProvider';
 
-interface OrderDetails {
-  amount: number;
-  productId: string;
-  size: string;
-  quantity: number;
-}
-
-export default function CheckoutPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user, isAuthenticated } = useAuth();
-  const [clientSecret, setClientSecret] = useState<string>();
+function CheckoutContent() {
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const amount = searchParams.get('amount');
+  const productId = searchParams.get('productId');
+  const size = searchParams.get('size');
+  const quantity = searchParams.get('quantity');
 
   useEffect(() => {
     const initializeCheckout = async () => {
+      if (!amount || !productId || !size || !quantity) {
+        setError('Invalid checkout parameters');
+        setLoading(false);
+        return;
+      }
+
       try {
-        // Check authentication first
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session || !isAuthenticated) {
-          const currentPath = window.location.pathname + window.location.search;
-          router.push(`/auth/login?redirect=${encodeURIComponent(currentPath)}`);
-          return;
-        }
-
-        // Get order details from URL parameters
-        const amount = Number(searchParams.get('amount')) || 0;
-        const productId = searchParams.get('product_id');
-        const size = searchParams.get('size');
-        const quantity = Number(searchParams.get('quantity')) || 1;
-
-        if (!amount || !productId || !size) {
-          router.push('/collections');
-          return;
-        }
-
-        setOrderDetails({ amount, productId, size, quantity });
-
-        // Create PaymentIntent
         const response = await fetch('/api/create-payment-intent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: parseFloat(amount),
+            currency: 'ngn',
+          }),
         });
 
         if (!response.ok) {
@@ -65,70 +45,48 @@ export default function CheckoutPage() {
         const data = await response.json();
         setClientSecret(data.clientSecret);
       } catch (err) {
-        console.error('Checkout initialization error:', err);
-        setError('Failed to initialize checkout. Please try again.');
+        console.error('Error initializing checkout:', err);
+        setError('Failed to initialize checkout');
       } finally {
         setLoading(false);
       }
     };
 
+    if (!user) {
+      const currentPath = window.location.pathname + window.location.search;
+      router.push(`/auth/login?redirect=${encodeURIComponent(currentPath)}`);
+      return;
+    }
+
     initializeCheckout();
-  }, [searchParams, router, isAuthenticated]);
+  }, [amount, productId, size, quantity, user, router]);
 
   const handleSuccess = async () => {
     try {
-      if (!user || !orderDetails) {
-        console.error('Missing user or order details');
-        setError('Unable to process order. Please try again.');
-        return;
+      // Create order in database
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user?.id,
+          amount: parseFloat(amount!),
+          productId,
+          size,
+          quantity: parseInt(quantity!),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create order');
       }
 
-      // Create the order using the database function
-      const { data: orderId, error: orderError } = await supabase
-        .rpc('create_order', {
-          p_user_id: user.id,
-          p_product_id: orderDetails.productId,
-          p_quantity: orderDetails.quantity,
-          p_size: orderDetails.size,
-          p_shipping_address: {
-            full_name: user.name,
-            email: user.email,
-            phone: user.phone || '',
-            address: 'To be added',
-            city: 'To be added',
-            state: 'To be added',
-            postal_code: 'To be added',
-            country: 'Nigeria'
-          }
-        });
-
-      if (orderError) {
-        console.error('Order creation failed:', {
-          error: orderError.message,
-          details: orderError.details,
-          hint: orderError.hint,
-          code: orderError.code
-        });
-        
-        // Provide user-friendly error message based on the error
-        if (orderError.message.includes('Insufficient stock')) {
-          setError('This item is out of stock or has insufficient quantity. Please try again later.');
-        } else if (orderError.message.includes('Invalid size')) {
-          setError('The selected size is no longer available. Please choose a different size.');
-        } else if (orderError.message.includes('Product not found')) {
-          setError('This product is no longer available. Please choose a different item.');
-        } else {
-          setError('Failed to create order. Please try again.');
-        }
-        return;
-      }
-
-      // Success! Set success state and redirect
-      setShowSuccess(true);
+      // Redirect to success page
       router.push('/order-confirmation');
     } catch (err) {
-      console.error('Checkout error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      console.error('Error creating order:', err);
+      setError('Failed to process order');
     }
   };
 
@@ -138,7 +96,7 @@ export default function CheckoutPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen pt-24 flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[400px]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(200,162,84)]"></div>
       </div>
     );
@@ -146,81 +104,49 @@ export default function CheckoutPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen pt-24 flex items-center justify-center">
-        <div className="bg-red-50 p-4 rounded-lg text-red-500 max-w-md mx-auto">
-          {error}
-        </div>
-      </div>
-    );
-  }
-
-  if (showSuccess) {
-    return (
-      <div className="min-h-screen pt-24 flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white p-8 rounded-lg shadow-lg text-center max-w-md mx-auto"
+      <div className="text-center">
+        <p className="text-red-500 mb-4">{error}</p>
+        <button
+          onClick={() => router.push('/collections')}
+          className="bg-black text-white px-8 py-3 rounded-full hover:bg-[rgb(200,162,84)] transition-colors duration-300"
         >
-          <div className="mb-6">
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-green-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            </div>
-          </div>
-          <h2 className="text-2xl font-playfair font-bold mb-4">
-            Order Successful!
-          </h2>
-          <p className="text-gray-600 mb-8">
-            Thank you for your purchase. Your order has been confirmed.
-          </p>
-          <div className="space-y-4">
-            <Link
-              href="/collections"
-              className="block w-full bg-black text-white px-8 py-3 rounded-full hover:bg-[rgb(200,162,84)] transition-colors duration-300"
-            >
-              Continue Shopping
-            </Link>
-            <Link
-              href="/"
-              className="block w-full px-8 py-3 rounded-full border border-gray-300 hover:border-gray-400 transition-colors duration-300"
-            >
-              Return to Home
-            </Link>
-          </div>
-        </motion.div>
+          Return to Shop
+        </button>
       </div>
     );
   }
 
-  if (!clientSecret || !orderDetails) {
+  if (!clientSecret) {
     return null;
   }
 
   return (
+    <div className="max-w-lg mx-auto">
+      <h1 className="text-4xl font-playfair font-bold text-center mb-8">
+        Checkout
+      </h1>
+      <StripeProvider clientSecret={clientSecret}>
+        <CheckoutForm
+          totalAmount={parseFloat(amount!)}
+          onSuccess={handleSuccess}
+          onCancel={handleCancel}
+        />
+      </StripeProvider>
+    </div>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-4xl md:text-5xl font-playfair font-bold text-center mb-8">
-          Checkout
-        </h1>
-        <StripeProvider clientSecret={clientSecret}>
-          <CheckoutForm
-            totalAmount={orderDetails.amount}
-            onSuccess={handleSuccess}
-            onCancel={handleCancel}
-          />
-        </StripeProvider>
+        <Suspense fallback={
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(200,162,84)]"></div>
+          </div>
+        }>
+          <CheckoutContent />
+        </Suspense>
       </div>
     </div>
   );

@@ -101,7 +101,7 @@ export default function WishlistPage() {
           >
             <div className="relative h-64">
               <Image
-                src={product.image}
+                src={product.images[0]}
                 alt={product.name}
                 fill
                 className="object-cover group-hover:scale-105 transition-transform duration-300"

@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser({
           id: session.user.id,
           name: session.user.user_metadata.full_name || '',
-          email: session.user.email,
+          email: session.user.email || null,
           avatar: session.user.user_metadata.avatar_url,
         });
         setIsAuthenticated(true);
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser({
           id: session.user.id,
           name: session.user.user_metadata.full_name || '',
-          email: session.user.email,
+          email: session.user.email || null,
           avatar: session.user.user_metadata.avatar_url,
         });
         setIsAuthenticated(true);
@@ -58,13 +58,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async ({ email, password }: { email: string; password: string }) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) throw error;
-    return data;
   };
 
   const register = async ({ 
@@ -76,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string; 
     password: string; 
   }) => {
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -87,7 +86,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (error) throw error;
-    return data;
   };
 
   const logout = async () => {
@@ -96,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithSocial = async (provider: 'google') => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: 'https://dwaucvrtjirnbzkfhzbv.supabase.co/auth/v1/callback',
@@ -108,7 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (error) throw error;
-    return data;
   };
 
   const value = {

@@ -145,26 +145,26 @@ export default function OrderTrackingPage() {
                       className="flex justify-between items-center"
                     >
                       <div>
-                        <p className="font-medium">{item.name}</p>
+                        <p className="font-medium">{item.product.name}</p>
                         <p className="text-sm text-gray-600">
                           Size: {item.size} • Quantity: {item.quantity}
                         </p>
                       </div>
-                      <p>₦{item.price.toLocaleString()}</p>
+                      <p>₦{(item.price / 100).toLocaleString()}</p>
                     </div>
                   ))}
                   <div className="border-t pt-2 mt-4">
                     <div className="flex justify-between">
                       <p>Subtotal</p>
-                      <p>₦{order.subtotal.toLocaleString()}</p>
+                      <p>₦{(order.subtotal / 100).toLocaleString()}</p>
                     </div>
                     <div className="flex justify-between">
                       <p>Shipping</p>
-                      <p>₦{order.shipping_fee.toLocaleString()}</p>
+                      <p>₦{(order.shipping_fee / 100).toLocaleString()}</p>
                     </div>
                     <div className="flex justify-between font-bold mt-2">
                       <p>Total</p>
-                      <p>₦{order.total.toLocaleString()}</p>
+                      <p>₦{(order.total / 100).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>

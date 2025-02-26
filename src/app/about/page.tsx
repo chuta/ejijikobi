@@ -75,7 +75,7 @@ export default function AboutPage() {
           >
             <h2 className="text-3xl font-playfair font-bold mb-6">Our Mission</h2>
             <p className="text-lg text-gray-600 leading-relaxed">
-              At Ejiji Kobi, we're on a mission to redefine African fashion for the modern world. 
+              At Ejiji Kobi, we&apos;re on a mission to redefine African fashion for the modern world. 
               Our journey began with a simple yet powerful idea: to create clothing that honors our 
               rich cultural heritage while embracing contemporary design sensibilities.
             </p>
@@ -139,7 +139,7 @@ export default function AboutPage() {
                   of fashion.
                 </p>
                 <p>
-                  Today, we're proud to be at the forefront of modern African fashion, 
+                  Today, we&apos;re proud to be at the forefront of modern African fashion, 
                   creating pieces that celebrate our heritage while pushing the boundaries 
                   of contemporary design.
                 </p>
