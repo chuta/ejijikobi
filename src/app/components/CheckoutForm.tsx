@@ -4,15 +4,24 @@ import { useState } from 'react';
 import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
 import { motion, AnimatePresence } from 'framer-motion';
 
-interface CheckoutFormProps {
-  totalAmount: number;
-  onSuccess: () => void;
-  onCancel: () => void;
+interface PaymentData {
+  payment_method: 'stripe' | 'pay-on-delivery';
+  delivery_address?: string;
+  phone_number?: string;
 }
 
-export default function CheckoutForm({ totalAmount, onSuccess, onCancel }: CheckoutFormProps) {
+interface CheckoutFormProps {
+  totalAmount: number;
+  onSuccess: (data: PaymentData) => void;
+  onCancel: () => void;
+  isProcessing: boolean;
+}
+
+export default function CheckoutForm({ totalAmount, onSuccess, onCancel, isProcessing = false }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'pay-on-delivery'>('stripe');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,10 +34,15 @@ export default function CheckoutForm({ totalAmount, onSuccess, onCancel }: Check
       // Handle Pay on Delivery
       try {
         setLoading(true);
-        // Here you would typically make an API call to your backend to create the order
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulating API call
-        onSuccess();
+        
+        // Call the success callback with pay-on-delivery details
+        onSuccess({
+          payment_method: 'pay-on-delivery',
+          delivery_address: deliveryAddress,
+          phone_number: phoneNumber
+        });
       } catch (err) {
+        console.error('Error processing pay-on-delivery order:', err);
         setError('Failed to process pay-on-delivery order. Please try again.');
       } finally {
         setLoading(false);
@@ -117,6 +131,8 @@ export default function CheckoutForm({ totalAmount, onSuccess, onCancel }: Check
                 <textarea
                   required
                   rows={3}
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(200,162,84)]"
                   placeholder="Enter your complete delivery address"
                 />
@@ -128,6 +144,8 @@ export default function CheckoutForm({ totalAmount, onSuccess, onCancel }: Check
                 <input
                   type="tel"
                   required
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[rgb(200,162,84)]"
                   placeholder="Enter your phone number"
                 />
@@ -148,10 +166,10 @@ export default function CheckoutForm({ totalAmount, onSuccess, onCancel }: Check
           </p>
           <button
             type="submit"
-            disabled={!stripe && paymentMethod === 'stripe' || loading}
+            disabled={(!stripe && paymentMethod === 'stripe') || loading || isProcessing}
             className="w-full bg-black text-white px-8 py-3 rounded-full hover:bg-[rgb(200,162,84)] transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Processing...' : 'Complete Order'}
+            {loading || isProcessing ? 'Processing...' : 'Complete Order'}
           </button>
           <button
             type="button"
