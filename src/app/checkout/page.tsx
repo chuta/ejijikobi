@@ -109,7 +109,18 @@ function CheckoutContent() {
         }),
       });
 
-      const data = await response.json();
+      // Add response debugging
+      const responseText = await response.text();
+      console.log('Raw API Response:', responseText);
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Error parsing response:', parseError);
+        console.error('Response content:', responseText);
+        throw new Error('Invalid response from server');
+      }
 
       if (!response.ok) {
         console.error('Order creation failed:', data);
