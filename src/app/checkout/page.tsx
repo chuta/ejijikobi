@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import CheckoutForm from '../components/CheckoutForm';
 import StripeProvider from '../components/StripeProvider';
+import { supabase } from '../lib/supabase';
 
 function CheckoutContent() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -14,7 +15,7 @@ function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const amount = searchParams.get('amount');
-  const productId = searchParams.get('productId');
+  const productId = searchParams.get('product_id');
   const size = searchParams.get('size');
   const quantity = searchParams.get('quantity');
 
@@ -61,32 +62,69 @@ function CheckoutContent() {
     initializeCheckout();
   }, [amount, productId, size, quantity, user, router]);
 
-  const handleSuccess = async () => {
+  const handleSuccess = async (paymentData?: { payment_method: string; delivery_address?: string; phone_number?: string }) => {
     try {
+      setLoading(true);
+      setError(null);
+      
+      // Get the session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      console.log('Session found:', { 
+        hasAccessToken: !!session.access_token,
+        tokenLength: session.access_token?.length 
+      });
+
+      console.log('Creating order with data:', {
+        userId: user?.id,
+        productId,
+        size,
+        quantity,
+        payment_method: paymentData?.payment_method || 'stripe',
+        delivery_address: paymentData?.delivery_address,
+        phone_number: paymentData?.phone_number,
+        status: paymentData?.payment_method === 'pay-on-delivery' ? 'pending' : 'processing'
+      });
+
       // Create order in database
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           userId: user?.id,
-          amount: parseFloat(amount!),
           productId,
           size,
           quantity: parseInt(quantity!),
+          payment_method: paymentData?.payment_method || 'stripe',
+          delivery_address: paymentData?.delivery_address,
+          phone_number: paymentData?.phone_number,
+          status: paymentData?.payment_method === 'pay-on-delivery' ? 'pending' : 'processing'
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to create order');
+        console.error('Order creation failed:', data);
+        throw new Error(data.message || 'Failed to create order');
       }
+
+      console.log('Order created successfully:', data);
 
       // Redirect to success page
       router.push('/order-confirmation');
     } catch (err) {
       console.error('Error creating order:', err);
-      setError('Failed to process order');
+      setError(err instanceof Error ? err.message : 'Failed to process order');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,6 +168,7 @@ function CheckoutContent() {
           totalAmount={parseFloat(amount!)}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
+          isProcessing={loading}
         />
       </StripeProvider>
     </div>
