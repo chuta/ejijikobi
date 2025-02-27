@@ -90,6 +90,27 @@ function CheckoutContent() {
         status: paymentData?.payment_method === 'pay-on-delivery' ? 'pending' : 'processing'
       });
 
+      // Log the full request details
+      const requestBody = {
+        userId: user?.id,
+        productId,
+        size,
+        quantity: parseInt(quantity!),
+        payment_method: paymentData?.payment_method || 'stripe',
+        delivery_address: paymentData?.delivery_address,
+        phone_number: paymentData?.phone_number,
+        status: paymentData?.payment_method === 'pay-on-delivery' ? 'pending' : 'processing'
+      };
+
+      console.log('Request details:', {
+        url: '/api/orders',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token?.substring(0, 10)}...` // Log partial token for security
+        },
+        body: requestBody
+      });
+
       // Create order in database
       const response = await fetch('/api/orders', {
         method: 'POST',
@@ -97,17 +118,12 @@ function CheckoutContent() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({
-          userId: user?.id,
-          productId,
-          size,
-          quantity: parseInt(quantity!),
-          payment_method: paymentData?.payment_method || 'stripe',
-          delivery_address: paymentData?.delivery_address,
-          phone_number: paymentData?.phone_number,
-          status: paymentData?.payment_method === 'pay-on-delivery' ? 'pending' : 'processing'
-        }),
+        body: JSON.stringify(requestBody),
       });
+
+      // Log response details
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
       // Add response debugging
       const responseText = await response.text();
@@ -119,12 +135,18 @@ function CheckoutContent() {
       } catch (parseError) {
         console.error('Error parsing response:', parseError);
         console.error('Response content:', responseText);
-        throw new Error('Invalid response from server');
+        console.error('Response status:', response.status);
+        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
+        throw new Error(`Invalid response from server (Status: ${response.status})`);
       }
 
       if (!response.ok) {
-        console.error('Order creation failed:', data);
-        throw new Error(data.message || 'Failed to create order');
+        console.error('Order creation failed:', {
+          status: response.status,
+          data,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        throw new Error(data.message || `Failed to create order (Status: ${response.status})`);
       }
 
       console.log('Order created successfully:', data);
